@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from .base import BaseModule
+from .detection_result import DetectionResult, extract_from_ultralytics, extract_from_onnx
 from framework.events import Events
 
 
@@ -121,7 +122,8 @@ class ModelLoader(BaseModule):
             if self.use_onnx and self.onnx_session:
                 return self._predict_onnx(image)
             else:
-                return self._predict_pytorch(image)
+                raw = self._predict_pytorch(image)
+                return [extract_from_ultralytics(raw)]
         except Exception as e:
             img_desc = image if isinstance(image, str) else f"<{type(image).__name__}>"
             import traceback
@@ -268,29 +270,4 @@ class ModelLoader(BaseModule):
         input_name = self.onnx_session.get_inputs()[0].name
         outputs = self.onnx_session.run(None, {input_name: input_tensor})
         detections = self._postprocess_onnx(outputs[0], original_shape, lb_params)
-        return [self._wrap_onnx_result(detections, img_array)]
-
-    def _wrap_onnx_result(self, detections, img_array):
-        class FakeBox:
-            def __init__(self, box, score, class_id):
-                self.xyxy = np.array([box[0], box[1], box[2], box[3]])
-                self.conf = float(score)
-                self.cls = int(class_id)
-
-        class FakeBoxes:
-            def __init__(self, dets):
-                self.boxes_list = [FakeBox(d['box'], d['score'], d['class_id']) for d in dets]
-
-            def __iter__(self):
-                return iter(self.boxes_list)
-
-            def __len__(self):
-                return len(self.boxes_list)
-
-        class FakeResult:
-            def __init__(self, dets, names, orig_img):
-                self.boxes = FakeBoxes(dets) if dets else None
-                self.names = names
-                self.orig_img = orig_img
-
-        return FakeResult(detections, self.model_names, img_array)
+        return [extract_from_onnx(detections, self.model_names, img_array)]

@@ -1,102 +1,13 @@
 import os
 import sys
-import ctypes
-
-os.environ.setdefault('OPENCV_LOG_LEVEL', 'ERROR')
-os.environ.setdefault('OPENCV_FFMPEG_LOGLEVEL', '-8')
-os.environ.setdefault('OPENCV_VIDEOIO_DEBUG', '0')
-
 import tkinter as tk
-from tkinter import ttk, font
+from tkinter import ttk
 
+from runtime_env import setup_style, get_dpi_scale
 
-def _init_dpi():
-    if sys.platform == 'win32':
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            try:
-                ctypes.windll.shcore.SetProcessDpiAwareness(1)
-            except Exception:
-                try:
-                    ctypes.windll.user32.SetProcessDPIAware()
-                except Exception:
-                    pass
-
-_init_dpi()
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-import torch
-torch.backends.cudnn.enabled = False
-
-from framework.app import App
-from framework.i18n import T, set_lang, current, on_change, off_change
-from modules.model_loader import ModelLoader
-from modules.inference import InferenceEngine
-from modules.training import TrainingEngine
-from modules.converter import ModelConverter
-from modules.dataset import DatasetManager
-from modules.label_studio import LabelStudioService
-from modules.history import HistoryManager
-from modules.logger import DetectionLogger
-from gui.detection_window import DetectionWindow
-from gui.training_window import TrainingWindow
-
-_DPI_SCALE = 1.0
+setup_style()
+_DPI_SCALE = get_dpi_scale()
 _FONT_FAMILY = 'Microsoft YaHei UI'
-
-
-def _setup_style():
-    global _DPI_SCALE
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        _DPI_SCALE = max(1.0, root.winfo_fpixels('1i') / 96.0)
-        root.tk.call('tk', 'scaling', _DPI_SCALE)
-    except Exception:
-        pass
-
-    style = ttk.Style()
-    available = style.theme_names()
-    for preferred in ('vista', 'clam', 'alt', 'default'):
-        if preferred in available:
-            style.theme_use(preferred)
-            break
-
-    base_size = max(10, int(10 * _DPI_SCALE))
-    heading_size = max(11, int(11 * _DPI_SCALE))
-    mono_size = max(9, int(9 * _DPI_SCALE))
-
-    default_font = font.nametofont("TkDefaultFont")
-    default_font.configure(family=_FONT_FAMILY, size=base_size)
-
-    text_font = font.nametofont("TkTextFont")
-    text_font.configure(family=_FONT_FAMILY, size=base_size)
-
-    fixed_font = font.nametofont("TkFixedFont")
-    fixed_font.configure(family='Consolas', size=mono_size)
-
-    heading_font = font.nametofont("TkHeadingFont")
-    heading_font.configure(family=_FONT_FAMILY, size=heading_size, weight='bold')
-
-    root.option_add("*Font", default_font)
-    root.option_add("*TButton", {"padding": [max(6, int(6 * _DPI_SCALE)), max(3, int(3 * _DPI_SCALE))]})
-    root.option_add("*TLabel", {"padding": [max(1, int(2 * _DPI_SCALE)), max(1, int(2 * _DPI_SCALE))]})
-    root.option_add("*Treeview", {"rowheight": max(22, int(24 * _DPI_SCALE))})
-
-    style.configure("Accent.TButton", font=(_FONT_FAMILY, base_size, 'bold'))
-    style.configure("TLabelframe.Label", font=(_FONT_FAMILY, base_size, 'bold'))
-    style.configure("TNotebook.Tab", font=(_FONT_FAMILY, base_size), padding=[max(10, int(10 * _DPI_SCALE)), max(2, int(2 * _DPI_SCALE))])
-    style.configure("Treeview.Heading", font=(_FONT_FAMILY, base_size, 'bold'))
-
-    root.destroy()
-
-
-def get_dpi_scale():
-    return _DPI_SCALE
-
-
-_setup_style()
 
 
 def create_app():
