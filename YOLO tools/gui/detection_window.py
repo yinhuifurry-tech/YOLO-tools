@@ -588,8 +588,9 @@ class DetectionWindow:
             total = len(self.image_paths)
             errors = []
             for idx, path in enumerate(self.image_paths):
-                self.root.after(0, lambda i=idx: self.status_var.set(
-                    f"{T('detect.status_detecting')} {i+1}/{total}: {os.path.basename(self.image_paths[i])}"))
+                if idx % 10 == 0:
+                    self.root.after(0, lambda i=idx: self.status_var.set(
+                        f"{T('detect.status_detecting')} {i+1}/{total}: {os.path.basename(self.image_paths[i])}"))
                 if not os.path.exists(path):
                     msg = f"File missing: {path}"
                     errors.append(msg)
@@ -780,7 +781,11 @@ class DetectionWindow:
 
     # ==================== CAMERA ====================
     def _refresh_cameras(self):
-        cameras = self.inference.refresh_cameras()
+        try:
+            target = int(self.camera_idx_var.get())
+        except ValueError:
+            target = 0
+        cameras = self.inference.refresh_cameras_up_to(target)
         if cameras:
             self.camera_idx_combo['values'] = cameras
             if self.camera_idx_var.get() not in cameras:
@@ -793,6 +798,8 @@ class DetectionWindow:
         if not self.inference.camera_playing:
             try:
                 idx = int(self.camera_idx_var.get())
+                if idx < 0 or idx > 99:
+                    raise ValueError("Out of range (0-99)")
             except ValueError:
                 messagebox.showerror(T('dlg.error'), T('dlg.invalid_cam_idx'))
                 return

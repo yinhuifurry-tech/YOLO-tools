@@ -1,4 +1,5 @@
 import os
+import json
 
 
 _defaults = {
@@ -43,7 +44,14 @@ _defaults = {
     'history': {
         'max_history': 100,
     },
+    'logger': {
+        'path': 'detection_log.jsonl',
+        'interval': '10',
+        'log_detections': False,
+    },
 }
+
+CONFIG_FILE = 'config.json'
 
 
 class Config:
@@ -51,6 +59,7 @@ class Config:
         self._data = {}
         for section, values in _defaults.items():
             self._data[section] = dict(values)
+        self._load()
 
     def get(self, section, key, default=None):
         return self._data.get(section, {}).get(key, default)
@@ -65,3 +74,22 @@ class Config:
 
     def dict(self):
         return {k: dict(v) for k, v in self._data.items()}
+
+    def save(self):
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self._data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _load(self):
+        if not os.path.exists(CONFIG_FILE):
+            return
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+            for section, values in saved.items():
+                if section in self._data:
+                    self._data[section].update(values)
+        except Exception:
+            pass

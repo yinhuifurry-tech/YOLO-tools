@@ -578,6 +578,7 @@ class TrainingWindow:
 
     def _run_in_thread(self, target, status_text, progress_bar=None):
         def _wrapped():
+            import logging
             self.root.after(0, lambda: self.status_var.set(status_text))
             self.root.after(0, lambda: self.task_label.config(text=status_text, foreground="blue"))
             if progress_bar:
@@ -597,8 +598,28 @@ class TrainingWindow:
                 def flush(s):
                     s.orig.flush()
 
+            class _LogHandler(logging.Handler):
+                def __init__(s, cb):
+                    super().__init__()
+                    s.cb = cb
+                def emit(s, record):
+                    try:
+                        msg = s.format(record)
+                        if msg.strip():
+                            s.cb(msg.rstrip())
+                    except Exception:
+                        pass
+
             captured = io.StringIO()
             dual = _DualOut(captured, self._log)
+            log_handler = _LogHandler(self._log)
+            log_handler.setLevel(logging.INFO)
+            log_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                                                        datefmt='%H:%M:%S'))
+            root_logger = logging.getLogger()
+            root_logger.addHandler(log_handler)
+            old_level = root_logger.level
+            root_logger.setLevel(logging.INFO)
             try:
                 sys.stdout = dual
                 sys.stderr = dual
@@ -613,6 +634,8 @@ class TrainingWindow:
             finally:
                 sys.stdout = old_out
                 sys.stderr = old_err
+                root_logger.removeHandler(log_handler)
+                root_logger.setLevel(old_level)
                 if progress_bar:
                     self.root.after(0, progress_bar.stop)
                     self.root.after(0, lambda: progress_bar.config(mode='determinate', value=0))

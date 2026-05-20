@@ -29,6 +29,7 @@ class App:
         self.events.emit(Events.APP_STOP)
         for name, module in reversed(list(self._modules.items())):
             module.on_stop()
+        self.config.save()
 
     @property
     def modules(self):

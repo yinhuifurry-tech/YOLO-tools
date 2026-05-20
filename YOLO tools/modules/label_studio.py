@@ -52,11 +52,25 @@ class LabelStudioService(BaseModule):
 
     def stop_service(self):
         self._running = False
+        try:
+            import requests
+            requests.post(f'http://127.0.0.1:{self.port}/shutdown', timeout=2)
+        except Exception:
+            pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3)
         self.emit(Events.LS_SERVICE_STOPPED)
 
     def _run_server(self):
         app = Flask(__name__)
         service_ref = self
+
+        @app.route('/shutdown', methods=['POST'])
+        def shutdown():
+            func = request.environ.get('werkzeug.server.shutdown')
+            if func:
+                func()
+            return jsonify({"status": "shutting down"})
 
         @app.route('/predict', methods=['POST'])
         def predict():
