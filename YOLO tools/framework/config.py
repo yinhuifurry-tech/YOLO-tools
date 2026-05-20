@@ -79,8 +79,8 @@ class Config:
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self._data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Config] Failed to save config: {e}")
 
     def _load(self):
         if not os.path.exists(CONFIG_FILE):
@@ -91,5 +91,5 @@ class Config:
             for section, values in saved.items():
                 if section in self._data:
                     self._data[section].update(values)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Config] Failed to load config: {e}")
