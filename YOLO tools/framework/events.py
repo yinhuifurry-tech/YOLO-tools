@@ -44,5 +44,7 @@ class EventBus:
             for callback in self._listeners[event]:
                 try:
                     callback(**kwargs)
-                except Exception:
-                    pass
+                except Exception as e:
+                    import traceback
+                    print(f"[EventBus] Error in {event.name}: {e}")
+                    traceback.print_exc()

@@ -298,7 +298,8 @@ class InferenceEngine(BaseModule):
                                        fps, self.current_fps, detections_data)
                 time.sleep(delay)
 
-        threading.Thread(target=_loop, daemon=True).start()
+        self._vid_thread = threading.Thread(target=_loop, daemon=True)
+        self._vid_thread.start()
 
     def pause_video(self):
         self.playing = False
@@ -309,6 +310,9 @@ class InferenceEngine(BaseModule):
         if self.video_cap:
             self.video_cap.release()
             self.video_cap = None
+        if hasattr(self, '_vid_thread') and self._vid_thread is not None:
+            self._vid_thread.join(timeout=2)
+            self._vid_thread = None
 
     def seek_video(self, target_frame):
         if self.video_cap:
@@ -442,7 +446,8 @@ class InferenceEngine(BaseModule):
                 if on_frame_callback:
                     on_frame_callback(pil_img, current_fps_val, detections_data, update_label)
 
-        threading.Thread(target=_loop, daemon=True).start()
+        self._cam_thread = threading.Thread(target=_loop, daemon=True)
+        self._cam_thread.start()
         self.emit(Events.CAMERA_STARTED, idx=idx)
         return True, f"Camera {idx} started"
 
@@ -452,6 +457,9 @@ class InferenceEngine(BaseModule):
         if self.camera_cap:
             self.camera_cap.release()
             self.camera_cap = None
+        if hasattr(self, '_cam_thread') and self._cam_thread is not None:
+            self._cam_thread.join(timeout=2)
+            self._cam_thread = None
         self.emit(Events.CAMERA_STOPPED)
 
     def refresh_cameras(self, max_idx=5):
@@ -469,6 +477,10 @@ class InferenceEngine(BaseModule):
                 except Exception:
                     pass
         return available
+
+    def refresh_cameras_up_to(self, target_idx):
+        scan = max(target_idx + 1, 5)
+        return self.refresh_cameras(scan)
 
     # ---- Static helpers ----
     @staticmethod

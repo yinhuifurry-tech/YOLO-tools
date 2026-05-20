@@ -174,40 +174,66 @@ class ModelLoader(BaseModule):
             raise TypeError(f"Unsupported image type: {type(image)}")
 
     def _preprocess_onnx(self, image):
-        img_resized = cv2.resize(image, (self.onnx_input_size, self.onnx_input_size))
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+        h, w = image.shape[:2]
+        target = self.onnx_input_size
+        scale = min(target / w, target / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        img_resized = cv2.resize(image, (new_w, new_h))
+        pad_w = target - new_w
+        pad_h = target - new_h
+        pad_left = pad_w // 2
+        pad_top = pad_h // 2
+        img_padded = cv2.copyMakeBorder(img_resized, pad_top, pad_h - pad_top,
+                                         pad_left, pad_w - pad_left,
+                                         cv2.BORDER_CONSTANT, value=(114, 114, 114))
+        img_rgb = cv2.cvtColor(img_padded, cv2.COLOR_BGR2RGB)
         img_transposed = np.transpose(img_rgb, (2, 0, 1))
         img_normalized = img_transposed.astype(np.float32) / 255.0
-        return np.expand_dims(img_normalized, axis=0)
+        return np.expand_dims(img_normalized, axis=0), (scale, pad_left, pad_top)
 
-    def _postprocess_onnx(self, output, original_shape):
+    def _postprocess_onnx(self, output, original_shape, letterbox_params=None):
         conf_threshold = self.config.get('model', 'conf_threshold', 0.35)
         iou_threshold = self.config.get('model', 'iou_threshold', 0.5)
-        predictions = output[0]
-        predictions = predictions.T
-        boxes = predictions[:, :4]
-        scores = predictions[:, 4:]
-        max_scores = np.max(scores, axis=1)
-        class_ids = np.argmax(scores, axis=1)
-        keep_indices = max_scores > conf_threshold
-        boxes = boxes[keep_indices]
-        max_scores = max_scores[keep_indices]
-        class_ids = class_ids[keep_indices]
-        x1 = boxes[:, 0] - boxes[:, 2] / 2
-        y1 = boxes[:, 1] - boxes[:, 3] / 2
-        x2 = boxes[:, 0] + boxes[:, 2] / 2
-        y2 = boxes[:, 1] + boxes[:, 3] / 2
+        predictions = np.squeeze(output[0])
+        if predictions.ndim == 2 and predictions.shape[1] > predictions.shape[0]:
+            predictions = predictions.T
+        num_features = predictions.shape[0]
+        boxes_raw = predictions[:4, :]
+        if num_features == 85:
+            obj_conf = predictions[4, :]
+            class_scores = predictions[5:, :] * obj_conf
+        else:
+            class_scores = predictions[4:, :]
+        max_scores = np.max(class_scores, axis=0)
+        class_ids = np.argmax(class_scores, axis=0)
+        keep = max_scores > conf_threshold
+        boxes_raw = boxes_raw[:, keep]
+        max_scores = max_scores[keep]
+        class_ids = class_ids[keep]
+        if boxes_raw.shape[1] == 0:
+            return []
+        cx, cy, w, h = boxes_raw[0], boxes_raw[1], boxes_raw[2], boxes_raw[3]
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
         boxes = np.stack([x1, y1, x2, y2], axis=1)
-        scale_x = original_shape[1] / self.onnx_input_size
-        scale_y = original_shape[0] / self.onnx_input_size
-        boxes[:, [0, 2]] *= scale_x
-        boxes[:, [1, 3]] *= scale_y
+        if letterbox_params:
+            scale, pad_left, pad_top = letterbox_params
+            boxes[:, [0, 2]] -= pad_left
+            boxes[:, [1, 3]] -= pad_top
+            boxes /= scale
+        else:
+            scale_x = original_shape[1] / self.onnx_input_size
+            scale_y = original_shape[0] / self.onnx_input_size
+            boxes[:, [0, 2]] *= scale_x
+            boxes[:, [1, 3]] *= scale_y
         indices = cv2.dnn.NMSBoxes(boxes.tolist(), max_scores.tolist(), conf_threshold, iou_threshold)
         results = []
         if len(indices) > 0:
             for i in indices.flatten():
                 results.append({
-                    'box': boxes[i], 'score': max_scores[i], 'class_id': int(class_ids[i])
+                    'box': boxes[i], 'score': float(max_scores[i]), 'class_id': int(class_ids[i])
                 })
         return results
 
@@ -238,10 +264,10 @@ class ModelLoader(BaseModule):
         else:
             raise TypeError(f"Unsupported image type: {type(image)}")
 
-        input_tensor = self._preprocess_onnx(img_array)
+        input_tensor, lb_params = self._preprocess_onnx(img_array)
         input_name = self.onnx_session.get_inputs()[0].name
         outputs = self.onnx_session.run(None, {input_name: input_tensor})
-        detections = self._postprocess_onnx(outputs[0], original_shape)
+        detections = self._postprocess_onnx(outputs[0], original_shape, lb_params)
         return [self._wrap_onnx_result(detections, img_array)]
 
     def _wrap_onnx_result(self, detections, img_array):
